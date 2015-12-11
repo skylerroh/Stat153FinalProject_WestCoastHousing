@@ -14,6 +14,6 @@ for (j in 1:ncol(tables)){
 vec = as.vector(unlist(tables))
 names(vec) = names
 vec = vec[!is.na(as.numeric(vec))]
-west = ts(vec, frequency = 12, start = c(1973, 1)) 
-west
-plot(west)
+west = ts(as.numeric(vec), frequency = 12, start = 1973, end = c(2015, 10), class = 'ts') 
+
+save(west, file = '~/Github/Stat153FinalProject_WestCoastHousing/west_homes_ts.RData')
