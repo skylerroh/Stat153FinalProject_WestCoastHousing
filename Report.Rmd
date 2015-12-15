@@ -1,22 +1,152 @@
 ---
-title: "153 Final Project"
+title: "153 Final Project - West Coast Housing Sales"
 author: "Skyler Roh 23313980"
 date: "December 11, 2015"
-output: html_document
+fontsize: 11pt
+output: pdf_document
 ---
+```{r, echo = F}
+##load required packages and files
+library('astsa')
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
-```{r}
-summary(cars)
+setwd('~/Github/Stat153FinalProject_WestCoastHousing/')
+load('west_homes_ts.RData')
 ```
 
-You can also embed plots, for example:
+#Introduction.  
+  The purpose of this analysis project is to estimate a model that captures any seasonal trends in home sales in the Western United States. Additionally, I intend to examine if there exists two different such models, pre and post 2008 recession. With the tech field rising rapidly and housing prices increasing as the corresponding demand to live on the west coast keeps getting higher, it is important to understand the trend in sales in the housing market both to forecast future demand and potentially see forewarning to market crashes. The analysis will be performed by utilizing the Box-Jenkins method for applying a seasonal ARIMA model and time-frequency representations using spectrographs to identify differences pre and post recession.
 
-```{r, echo=FALSE}
-plot(cars)
+#Data Description.  
+  The data constists of information from the United States Census Bureau's surveys on new home sales. This data contains observations from January 1973 to October 2015 on the number of new houses sold per month in the West region of the U.S., totaling 514 observations (http://www.census.gov/econ/currentdata/dbsearch?program=RESSALES&startYear=1963&endYear=2015&categories=SOLD&dataType=TOTAL&geoLevel=WE&notAdjusted=1&errorData=1&submit=GET+DATA). Specifically, the values are presented as discrete in thousands of units with values ranging from 6 to 37 for 'new single-family houses sold' in the Western U.S. which consists of the Mountain and Pacific regions of the country (all states west of Texas). These values are not seasonally adjusted. 
+
+#Preliminary Visuals.  
+  First, to address the initial question posed of fitting a model to the whole series, plotting the non-transformed time series data makes apparent that the number of houses sold is not a stationary process. The values generally follow an upward trend other than two sharper decreases from approximately 1975 to 1980 and 2005 to 2010. The graphs of ACF and PACF reveal the process has a significant AR(1) component. But since the process is non stationary, we will look at differencing transformations to appropriately estimate the model.
+  
+```{r, echo = FALSE, fig.height=6, fig.width=6}
+par(mfrow = c(3, 1))
+plot(west, ylab = 'Houses Sold (thousands)', main ='New Single Family Homes Sold in Western U.S.')
+acf(west)
+pacf(west)
+```
+ 
+#Time-domain analysis.  
+##Differencing and Seasonality.
+  Given this non-stationary nature, differencing transformations are first applied to obtain a more stable process. Upon taking a first order difference of lag 1, there are two important characteristics revealed: the variance of the differenced processed is not approximately constant and the ACF and PACF plots confirm seasonality with period of 1 year. Thus, the log of the original process is taken to transform differences from month to month from an absolute difference in houses sold to a percent change and an additional difference term will be applied with a lag of 12 to account for the seasonal portion of the model.  
+  
+```{r, echo = FALSE, fig.height=6, fig.width=6}
+par(mfrow = c(3, 1))
+plot(west_d1, ylab = 'Houses sold (thousands)', main = 'First order difference')
+plot(log.west_d1, ylab = 'Log(Houses sold) (thousands)', main = 'First order difference of logs')
+acf(log.west_d1, lag.max = 120)
+```
+  
+```{r, echo = FALSE, fig.height = 3, fig.width=6}
+par(mfrow = c(1, 2))
+acf(log.west_d1_s1, lag.max = 60)
+pacf(log.west_d1_s1, lag.max = 84)
+```
+  
+##Parameter Estimation.  
+  Now looking at the resulting ACF and PACF after differencing, there a few models that appear as strong potential candidates. First determining the order of the seasonal ARIMA component, there are a couple possible scenarios:  
+  1. ACF goes to zero after 1 year lag, PACF tails off at seasonal lags (Q = 1).  
+  2. ACF goes to zero after 2 year lag, PACF tails off at seasonal lags (Q = 2).  
+  3. ACF and PACF are both tailing off (P = 4, Q = 1).  
+  4. Additionally a smaller ordered seasonal ARMA will be considered to avoid overfitting (P = 2, Q = 1).  
+  
+  Next, observing the intra seasonal behavior of ACF and PACF (h from 1 to 11), the series appears to have one large spike in ACF corresponding to a MA(1) and 4 spikes in PACF indicating a AR(4) model. The following AIC, AICc, and BIC criteria metrics correspond to the model numbers above:
+
+```{r, echo = FALSE, results='hide', fig.height=6.5}
+criteria
+sarima(log(west), 4, 1, 1, 0, 1, 1, 12) #ARIMA (4, 1, 1) X (0, 1, 1)_12 # best
+```
+ 
+##Residual Diagnostics.   
+  The best models selected by the minimums of these selection criteria are models 1 and 4, corresponding to ARIMA $(4, 1, 1) X (0, 1, 1)_{12}$ and ARIMA $(4, 1, 1) X (2, 1, 1)_{12}$ respectively. The latter has a lower AIC; however, the BIC for the former is lower. This is due to BIC typically choosing simpler models. I will opt for the simpler model in this case trading small bias for a reduction in model variance. Proceeding with the ARIMA $(4, 1, 1) X (0, 1, 1)_{12}$, diagnostics of the residuals reveal that they satisfy necessary model assumptions: standardized residuals appear close to random with a few extreme values further than 3 standard deviations near year 2010, the ACF of the residuals are not significant at any lag, and the residuals have a fairly normal distribution with heavier tails. Lastly, the Q statistic is not significant for any lag. Given that the model passes the residual diagnostics. The model chosen for the full series is the following with a 24 month forecast in red with 2 standard errors indicated by the blue dashed lines. The first image is the log based prediction, and the second is transformed into the original values in thousands of houses sold.
+  
+```{r, echo = FALSE, fig.height=4, fig.width=7}
+dif.log.fit1$fit
+par(mfrow = c(1,1))
+fore = sarima.for(log(west), 24, 4, 1, 1, 0, 1, 1, 12)
+plot(west, type = 'b', xlim = c(2007, 2018), ylim = c(0, 30))
+lines(exp(fore$pred), type = 'b', col = 'red')
+lines(exp(fore$pred) - 2*exp(fore$se), lty = 2, col = 'blue')
+lines(exp(fore$pred) + 2*exp(fore$se), lty = 2, col = 'blue')
+```
+  
+##Additional models.
+  The same process was taken to fit separate models to months up to December 2008 and after January 2009, that yielded ARIMA $(4, 1, 0) X (4, 1, 1)_{12}$ and ARIMA $(0, 1, 1)$ models respectively. The difference in these models seems high; however, the fewer observations post 2009, warrant need for further analysis in time-frequency domain since the ARIMA (0, 1, 1) seems overly simplistic for the process. **ACF, PACF, and model diagnostic plots attached in appendix**
+
+
+#Time-Frequency representation. 
+##Periodogram
+  A plot of a periodigram with modified smoother of span 13, reveals that overall the process is fairly smooth with the highest powers near frequencies at 0, 1, and 2 from highest power to lowest respectively. This confirms that the main seasonality of the time series occurs at long periods of 1 year and a smaller relation at periods of 6 months.
+```{r, echo = FALSE}
+spec.pgram(west, spans = c(13,11))$kernel
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+##Spectrographs
+  
+  To create a spectrograph that can give additional evidence to the difference between pre and post 2008 housing markets, I divided the series into 20 segments that each contain 48 total observations and overlapping 24 observations. Estimated spectral densities by smoothed periodogram with a total span of 13 months. 
+  
+```{r, echo=FALSE, results='hide', fig.show='hide'}
+par(mfrow = c(1,1))
+
+nobs = length(west) # number of observations 
+seg_size = 24
+cut_west = west[-(1:(nobs%%seg_size))]
+nseg = floor(nobs/seg_size) - 1 # size of nseg unique sections
+wsize = seg_size*2 # window size = next segment and overlap of previous section
+west.spec = matrix(0, wsize, nseg)
+  for (k in 1:nseg) {
+    a = seg_size*(k-1)+1
+    b = wsize+seg_size*(k-1)
+    west.spec[,k] = spec.pgram(cut_west[a:b], spans = c(13))$spec} #spans 6 months on both sides
+t = seq(1973 + 10/12, 1973 + 10/12 + (seg_size*nseg/12), len = ncol(west.spec))
+f = seq(0, 6,  len = nrow(west.spec)/2)
+z = t(west.spec[1:(nrow(west.spec)/2),])
+```
+
+```{r, echo = FALSE}
+filled.contour(t, f, log(z), ylab="frequency", xlab="time\n(months from October 1973)",
+               color.palette = function(x)rev(heat.colors(x)),
+               main="West Coast House Sales,\nlog(spectral densities) estimated via\n smoothed periodogram w/ span 13",
+               cex.main = .9)
+```
+  
+```{r, echo = FALSE}
+persp(t, f, z, zlab="Power", xlab="frequency", ylab="time",
+      ticktype="detailed", theta=25,d=2, main="3D Contour Spectrograph of House Sales")
+```
+
+  The resulting spectrograph confirms again that the western united states housing sales time series is non stationary as magnitude increases greatly for time indexes around 2005 and frequency above 3 (period = 4 months) compared to the magnitude of power other times at the same frequencies. The process is relatively stationary before 2005 with slightly increasing power at the boundaries, before 1975 and after 1995. These increasing powers in the frequency domain at higher frequencies may be indicative of another crash. Following the large downturn from 2005-2008, the spectrograph reveals a difference in the frequency domain of the series, as throughout the whole range, the magnitude of power decreases compared to earlier times. 
+
+#Discussion.  
+  The results of the parametric model estimates and spectrograph seem to confirm that there is indeed a difference in the behavior of Western U.S. housing sales since the market recession around 2008. This period of time was characterized by a large downward trend in the time series that exhibited a high power at nearly all frequencies. Prior to this period the power at high frequencies is seen to begin increasing which might be a warning sign to recession if it were to occur again in the future. Additionally, post recession, the series has stabilized greatly at high frequencies, leaving a large majority of the seasonality over 6 months in period, generating a more smooth series than prior. Lastly, the best parametric estimate of the series chosen via a minimum of BIC selection criteria, ARIMA $(4, 1, 1) X (0, 1, 1)_{12}$, predicts that the market will take a slight decrease in the next couple years overall, but the highest sales will occur in March through May of 2016 and 2017 with sales above 10.5 thousand compared to the low in November and December months that are predicted as low as 7.25 thousand. As for limitations of this project, some include the data of housing sales is given in a non continuous manner and the census includes all states west of texas while my original question considered west coastal states house sales. These issues were deemed non critical as the range of values is fairly large and the population in the Pacific coastal states is significantly greater than that of Mountain region states so the larger trends in the series most likely follow trends of the pacific states. However, the latter reasoning may not stand given that the prices of real estate are significantly higher in the Pacific states due to a more dense population which makes home ownership less costly in the Mountain region of the country. With these limitations in mind, the fitted parametric model fits well with fairly low error and non significant deviance from the residual assumptions.
+  
+  
+  
+  
+#Appendix
+##Pre2009
+```{r, echo = FALSE, fig.height=6, fig.width=6}
+par(mfrow = c(3, 1))
+plot(west_pre_d1_s1, main = 'First Order Difference (Lag 1) and\nFirst Order Seasonal Difference (Lag 12)\nPre 2009')
+acf(west_pre_d1_s1, lag.max = 48) # suggests seasonal MA 1
+pacf(west_pre_d1_s1, lag.max = 72) # decays over seasons, possibly suggests seasonal AR 4
+```
+  Models tested:  
+  1. ARIMA (0, 1, 1) X (0, 1, 1)_12  
+  2. ARIMA (4, 1, 0) X (0, 1, 1)_12  
+  3. ARIMA (4, 1, 1) X (0, 1, 1)_12  
+  4. ARIMA (0, 1, 1) X (4, 1, 1)_12  
+  5. ARIMA (4, 1, 0) X (4, 1, 1)_12  
+  6. ARIMA (4, 1, 1) X (4, 1, 1)_12  
+
+##Post2009
+```{r, echo = FALSE, fig.height=6, fig.width=6}
+par(mfrow = c(3, 1))
+plot(west_post_d1, main = 'First Order Difference (Lag 1)\nPost 2009')
+acf(west_post_d1, lag.max = 84)
+pacf(west_post_d1, lag.max = 84)
+```
+
